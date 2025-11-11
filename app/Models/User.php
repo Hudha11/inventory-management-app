@@ -63,7 +63,7 @@ class User extends Authenticatable
             ->implode('');
     }
 
-    public function item(): HasMany
+    public function items(): HasMany
     {
         return $this->hasMany(Item::class);
     }
