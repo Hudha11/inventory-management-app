@@ -13,13 +13,16 @@ return new class extends Migration
     {
         Schema::create('items', function (Blueprint $table) {
             $table->id();
-            // $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('category_id')
+                ->constrained()
+                ->onDelete('restrict'); // atau cascade sesuai business rule
             $table->string('sku')->unique();
             $table->string('name');
-            $table->decimal('price', 8, 2);
+            $table->decimal('price', 12, 2)->default(0);
             $table->integer('stock_quantity')->default(0);
-            $table->integer('reserved_quantity')->default(0);
+            $table->text('description')->nullable();
             $table->timestamps();
+            $table->softDeletes(); // opsional menambahkan deleted_at
         });
     }
 

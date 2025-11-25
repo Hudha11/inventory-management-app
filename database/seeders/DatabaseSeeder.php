@@ -18,7 +18,11 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             UserSeeder::class,
-            ItemSeeder::class,
+            // ItemSeeder::class,
         ]);
+
+        \App\Models\Category::factory(5)->create()->each(function ($cat) {
+            \App\Models\Item::factory(10)->create(['category_id' => $cat->id]);
+        });
     }
 }
