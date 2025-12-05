@@ -5,109 +5,82 @@ namespace App\Livewire\Items;
 use Livewire\Component;
 use Livewire\WithPagination;
 use App\Models\Item;
-use App\Models\Category;
-use Illuminate\Support\Facades\DB;
 
 class Index extends Component
 {
     use WithPagination;
-    protected $paginationTheme = 'tailwind';
 
+    // state untuk filter / pagination
     public $search = '';
     public $perPage = 10;
 
-    public $itemId;
-    public $category_id;
-    public $sku;
-    public $name;
-    public $price;
-    public $stock_quantity;
-    public $description;
+    // id yang akan dihapus (diset saat confirmDelete dipanggil)
+    public $deleteId = null;
 
-    public $isEdit = false;
-    public $showModal = false;
-
-    protected $rules = [
-        'category_id' => 'required|exists:categories,id',
-        'sku' => 'required|string|max:50|unique:items,sku',
-        'name' => 'required|string|max:255',
-        'price' => 'required|numeric|min:0',
-        'stock_quantity' => 'required|integer|min:0',
-        'description' => 'nullable|string',
+    // listener untuk refresh setelah save atau hapus
+    protected $listeners = [
+        'refreshItems' => '$refresh',
     ];
 
+    // reset page ketika search berubah
+    public function updatingSearch()
+    {
+        $this->resetPage();
+    }
+
+    /**
+     * Emit event untuk membuka form modal (create)
+     */
     public function create()
     {
-        $this->resetForm();
-        $this->isEdit = false;
-        $this->showModal = true;
+        $this->dispatch('showFormModal', id: null); // null => create mode
     }
 
-    public function edit(Item $item)
+    /**
+     * Emit event untuk membuka form modal (edit)
+     */
+    public function edit($id)
     {
-        $this->resetValidation();
-        $this->itemId = $item->id;
-        $this->category_id = $item->category_id;
-        $this->sku = $item->sku;
-        $this->name = $item->name;
-        $this->price = $item->price;
-        $this->stock_quantity = $item->stock_quantity;
-        $this->description = $item->description;
-        $this->isEdit = true;
-        $this->showModal = true;
+        $this->dispatch('showFormModal', id: $id);
     }
 
-    public function save()
+    /**
+     * Siapkan delete - tampilkan modal konfirmasi
+     */
+    public function confirmDelete($id)
     {
-        $rules = $this->rules;
-        if ($this->isEdit && $this->itemId) {
-            $rules['sku'] = 'required|string|max:50|unique:items,sku,' . $this->itemId;
+        $this->deleteId = $id;
+        $this->dispatch('showDeleteModal');
+    }
+
+    /**
+     * Hapus data setelah konfirmasi datang dari ItemDeleteConfirm
+     * (ItemDeleteConfirm akan emit event 'deleteConfirmed')
+     */
+    public function deleteConfirmed()
+    {
+        if (!$this->deleteId) return;
+
+        $item = Item::find($this->deleteId);
+        if ($item) {
+            $item->delete();
+            session()->flash('message', 'Item berhasil dihapus.');
+        } else {
+            session()->flash('message', 'Item tidak ditemukan.');
         }
 
-        $data = $this->validate($rules);
-
-        DB::transaction(function () use ($data) {
-            if ($this->isEdit && $this->itemId) {
-                Item::findOrFail($this->itemId)->update($data);
-                session()->flash('message', 'Item updated.');
-            } else {
-                Item::create($data);
-                session()->flash('message', 'Item created.');
-            }
-        });
-
-        $this->showModal = false;
-        $this->resetForm();
-    }
-
-    public function destroy($id)
-    {
-        DB::transaction(function () use ($id) {
-            $item = Item::findOrFail($id);
-            $item->delete();
-            session()->flash('message', 'Item deleted.');
-        });
-    }
-
-    public function resetForm()
-    {
-        $this->reset(['itemId', 'category_id', 'sku', 'name', 'price', 'stock_quantity', 'description', 'isEdit']);
-        $this->resetValidation();
+        // reset & refresh
+        $this->deleteId = null;
+        $this->dispatch('refreshItems');
     }
 
     public function render()
     {
-        $query = Item::with('category')
-            ->when($this->search, function ($q) {
-                $q->where('name', 'like', '%' . $this->search . '%')
-                    ->orWhere('sku', 'like', '%' . $this->search . '%')
-                    ->orWhereHas('category', fn($q2) => $q2->where('name', 'like', '%' . $this->search . '%'));
-            })
-            ->orderBy('created_at', 'desc');
+        $items = Item::query()
+            ->when($this->search, fn($q) => $q->where('name', 'like', "%{$this->search}%")->orWhere('sku', 'like', "%{$this->search}%"))
+            ->latest()
+            ->paginate($this->perPage);
 
-        $items = $query->paginate($this->perPage);
-        $categories = Category::orderBy('name')->get();
-
-        return view('livewire.items.index', compact('items', 'categories'));
+        return view('livewire.items.index', compact('items'));
     }
 }
